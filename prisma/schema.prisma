@@ -1,0 +1,413 @@
+// COLES CONTROL - Hosting Panel Database Schema
+// Prefix: cc_ (Coles Control)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+model cc_User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  username    String    @unique
+  password    String
+  name        String?
+  role        String    @default("student") // superadmin, admin, student
+  avatar      String?
+  status      String    @default("active") // active, suspended, pending
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  websites        cc_Website[]
+  databases       cc_Database[]
+  cronJobs        cc_CronJob[]
+  deployments     cc_Deployment[]
+  activityLogs    cc_ActivityLog[]
+  aiConversations cc_AIConversation[]
+  limits          cc_StudentLimit?
+
+  @@index([email])
+  @@index([username])
+  @@index([role])
+}
+
+model cc_Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+}
+
+// ============================================
+// DOMAIN & WEBSITE MANAGEMENT
+// ============================================
+
+model cc_Website {
+  id             String    @id @default(cuid())
+  userId         String
+  name           String
+  path           String    @unique // /student/{username} for students
+  domain         String? // for main domains
+  documentRoot   String
+  phpVersion     String    @default("8.2")
+  sslEnabled     Boolean   @default(false)
+  sslExpiry      DateTime?
+  status         String    @default("active") // active, suspended, error
+  diskUsage      Float     @default(0) // in bytes
+  bandwidthUsage Float     @default(0) // in bytes
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  user        cc_User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redirects   cc_DomainRedirect[]
+  deployments cc_Deployment[]
+  logs        cc_WebsiteLog[]
+  envVars     cc_EnvVar[]
+
+  @@index([userId])
+  @@index([path])
+  @@index([domain])
+}
+
+model cc_DomainRedirect {
+  id         String   @id @default(cuid())
+  websiteId  String
+  fromDomain String
+  toDomain   String
+  type       String   @default("301") // 301, 302
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  website cc_Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+}
+
+model cc_Deployment {
+  id         String    @id @default(cuid())
+  websiteId  String
+  userId     String
+  commitHash String?
+  branch     String?
+  status     String    @default("pending") // pending, building, success, failed
+  log        String?
+  deployedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  website cc_Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  user    cc_User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@index([userId])
+}
+
+model cc_WebsiteLog {
+  id        String   @id @default(cuid())
+  websiteId String
+  type      String // access, error, nginx
+  content   String
+  createdAt DateTime @default(now())
+
+  website cc_Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@index([type])
+}
+
+model cc_EnvVar {
+  id        String   @id @default(cuid())
+  websiteId String
+  key       String
+  value     String
+  isSecret  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  website cc_Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, key])
+  @@index([websiteId])
+}
+
+// ============================================
+// DATABASE MANAGEMENT (MySQL)
+// ============================================
+
+model cc_Database {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String   @unique
+  username  String
+  password  String // encrypted
+  size      Float    @default(0) // in bytes
+  charset   String   @default("utf8mb4")
+  collation String   @default("utf8mb4_unicode_ci")
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    cc_User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  backups cc_DatabaseBackup[]
+
+  @@index([userId])
+  @@index([name])
+}
+
+model cc_DatabaseBackup {
+  id         String   @id @default(cuid())
+  databaseId String
+  filename   String
+  size       Float    @default(0)
+  type       String   @default("manual") // manual, scheduled
+  status     String   @default("completed") // pending, completed, failed
+  createdAt  DateTime @default(now())
+
+  database cc_Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+
+  @@index([databaseId])
+}
+
+// ============================================
+// SERVER & SERVICES
+// ============================================
+
+model cc_Service {
+  id          String    @id @default(cuid())
+  name        String    @unique // nginx, php-fpm, mysql, redis, pm2
+  displayName String
+  status      String    @default("stopped") // running, stopped, error
+  version     String?
+  port        Int?
+  cpuUsage    Float     @default(0)
+  memUsage    Float     @default(0)
+  uptime      Int       @default(0) // seconds
+  lastRestart DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([name])
+}
+
+model cc_CronJob {
+  id        String    @id @default(cuid())
+  userId    String
+  name      String
+  command   String
+  schedule  String // cron expression
+  isEnabled Boolean   @default(true)
+  lastRun   DateTime?
+  nextRun   DateTime?
+  status    String    @default("idle") // idle, running, failed
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user cc_User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model cc_QueueJob {
+  id          String    @id @default(cuid())
+  queue       String
+  payload     String // JSON
+  status      String    @default("pending") // pending, processing, completed, failed
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  error       String?
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([queue])
+  @@index([status])
+}
+
+// ============================================
+// FILE MANAGEMENT
+// ============================================
+
+model cc_FilePermission {
+  id          String   @id @default(cuid())
+  path        String   @unique
+  owner       String
+  group       String
+  mode        String // e.g., "755"
+  isRecursive Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([path])
+}
+
+// ============================================
+// MONITORING & METRICS
+// ============================================
+
+model cc_ServerMetric {
+  id        String   @id @default(cuid())
+  cpuUsage  Float
+  memUsage  Float
+  diskUsage Float
+  diskRead  Float // bytes/sec
+  diskWrite Float // bytes/sec
+  netIn     Float // bytes/sec
+  netOut    Float // bytes/sec
+  loadAvg1  Float
+  loadAvg5  Float
+  loadAvg15 Float
+  uptime    Int // seconds
+  timestamp DateTime @default(now())
+
+  @@index([timestamp])
+}
+
+model cc_Alert {
+  id         String    @id @default(cuid())
+  type       String // cpu, memory, disk, service
+  severity   String // warning, critical
+  message    String
+  value      Float?
+  threshold  Float?
+  isResolved Boolean   @default(false)
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([type])
+  @@index([isResolved])
+}
+
+// ============================================
+// AI ASSISTANT
+// ============================================
+
+model cc_AIConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String?
+  context   String? // JSON context for AI
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     cc_User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages cc_AIMessage[]
+
+  @@index([userId])
+}
+
+model cc_AIMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String // user, assistant, system
+  content        String
+  tokens         Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  conversation cc_AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+model cc_AIFixLog {
+  id          String    @id @default(cuid())
+  type        String // 404, 500, config_error, etc.
+  filePath    String?
+  original    String? // original content
+  fixed       String? // fixed content
+  description String
+  status      String    @default("pending") // pending, applied, reverted
+  appliedAt   DateTime?
+  revertedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([type])
+  @@index([status])
+}
+
+// ============================================
+// ACTIVITY LOG
+// ============================================
+
+model cc_ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  entity    String? // website, database, file, etc.
+  entityId  String?
+  details   String? // JSON
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user cc_User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// ============================================
+// SETTINGS & CONFIGURATION
+// ============================================
+
+model cc_Setting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  type        String   @default("string") // string, number, boolean, json
+  category    String   @default("general")
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+  @@index([category])
+}
+
+model cc_NginxTemplate {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  content     String
+  description String?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+}
+
+// ============================================
+// STUDENT LIMITS (for student role)
+// ============================================
+
+model cc_StudentLimit {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  maxWebsites       Int      @default(1)
+  maxDatabases      Int      @default(1)
+  maxDiskSpace      Float    @default(1073741824) // 1GB in bytes
+  maxBandwidth      Float    @default(10737418240) // 10GB in bytes
+  maxCronJobs       Int      @default(3)
+  allowSSL          Boolean  @default(true)
+  allowCustomDomain Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user cc_User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
