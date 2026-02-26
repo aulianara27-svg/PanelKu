@@ -24,6 +24,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Paperclip,
+  Loader2,
   X
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
@@ -49,7 +50,7 @@ const initialMessages: Message[] = [];
 const suggestedPrompts = [
   { icon: AlertTriangle, text: 'Cek dan analisa error log server saya', color: 'red' },
   { icon: Code, text: 'Bantu saya debug error PHP ini:', color: 'blue' },
-  { icon: Terminal, text: 'Cara deploy website dari XAMPP ke VPS Linux', color: 'green' },
+  { icon: Terminal, text: 'Bantu deploy web baru', color: 'green' },
   { icon: FileText, text: 'Jelaskan cara setup Nginx virtual host', color: 'violet' },
 ];
 
@@ -65,6 +66,7 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
   const [selectedFile, setSelectedFile] = useState<{ name: string; content: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isTyping, setIsTyping] = useState(false);
+  const [runningAction, setRunningAction] = useState<string | null>(null);
   const [isReadingLog, setIsReadingLog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -169,7 +171,6 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
       let accumulated = '';
-      setIsTyping(false);
 
       while (true) {
         const { done, value } = await reader.read();
@@ -182,6 +183,7 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
           try {
             const parsed = JSON.parse(data);
             if (parsed.text) {
+              setIsTyping(false);
               accumulated += parsed.text;
               setMessages(prev => prev.map(m =>
                 m.id === aiMsgId ? { ...m, content: accumulated } : m
@@ -273,8 +275,11 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
   };
 
   const handleReadLog = async () => {
+    setRunningAction('Membaca log server terbaru...');
     setIsReadingLog(true);
     try {
+      // Simulate real process feel
+      await new Promise(r => setTimeout(r, 1000));
       const res = await fetch('/api/logs?log=all&lines=20');
       const data = await res.json();
 
@@ -311,6 +316,7 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
       }]);
     } finally {
       setIsReadingLog(false);
+      setRunningAction(null);
     }
   };
 
@@ -379,7 +385,6 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
       let accumulated = '';
-      setIsTyping(false);
 
       while (true) {
         const { done, value } = await reader.read();
@@ -392,6 +397,7 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
           try {
             const parsed = JSON.parse(data);
             if (parsed.text) {
+              setIsTyping(false);
               accumulated += parsed.text;
               setMessages(prev => prev.map(m =>
                 m.id === aiMsgId ? { ...m, content: accumulated } : m
@@ -412,6 +418,16 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
   };
 
   const handleAction = async (action: { type: string; label: string; data: string }) => {
+    if (action?.type === 'input') {
+      setInputValue(action.data || action.label);
+      return;
+    }
+
+    setRunningAction(action.label);
+
+    // Artificial delay to show the animation nicely
+    await new Promise(r => setTimeout(r, 1500));
+
     if (action?.type === 'fix') {
       const fixMessage: Message = {
         id: Date.now().toString(),
@@ -446,7 +462,38 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
           timestamp: new Date(),
         }]);
       }
+    } else if (action?.type === 'command') {
+      try {
+        const res = await fetch('/api/commands/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: action.data })
+        });
+        const resData = await res.json();
+
+        if (res.ok) {
+          setMessages((prev) => [...prev, {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: `✅ Perintah berhasil dieksekusi!\n\`\`\`\n${resData.message}\n\`\`\``,
+            timestamp: new Date(),
+          }]);
+        } else {
+          throw new Error(resData.error || 'Server error');
+        }
+      } catch (err: any) {
+        setMessages((prev) => [...prev, {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `❌ Gagal mengeksekusi perintah:\n${err.message}`,
+          timestamp: new Date(),
+        }]);
+      }
+    } else {
+      // For input, suggestion
+      sendDirectMessage(action.data || action.label);
     }
+    setRunningAction(null);
   };
 
   return (
@@ -512,10 +559,10 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
               </Button>
             )}
             <div className="relative">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-white" />
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
+                <Bot className="w-5 h-5 text-white" />
               </div>
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-[#0a0c10] animate-pulse" />
+              <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-400 rounded-full border-2 border-[#0a0c10]" />
             </div>
             <div>
               <h2 className="text-white font-semibold">Coles AI</h2>
@@ -553,8 +600,9 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
         {/* Messages */}
         {messages.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center overflow-y-auto">
-            <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center mb-6 shadow-2xl shadow-violet-500/20">
-              <Sparkles className="w-8 h-8 text-white" />
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center mb-6 shadow-2xl shadow-violet-500/20">
+              <Bot className="w-8 h-8 text-white relative z-10" />
+              <div className="absolute w-16 h-16 bg-violet-500/20 blur-xl rounded-full" />
             </div>
             <h3 className="text-2xl font-bold text-white mb-3">Coles AI</h3>
             <p className="text-gray-400 max-w-md mx-auto mb-8 text-sm leading-relaxed">
@@ -587,7 +635,7 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
         ) : (
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             <AnimatePresence mode="popLayout">
-              {messages.map((message, index) => (
+              {messages.filter(m => !(m.role === 'assistant' && !m.content)).map((message, index) => (
                 <motion.div
                   key={message.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -617,65 +665,89 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
                       ? 'bg-white/5 border border-white/10'
                       : 'bg-blue-600/20 border border-blue-500/30'
                   )}>
-                    <div className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">
-                      {message.content.split('```').map((part, i) => {
-                        if (i % 2 === 1) {
-                          return (
-                            <div key={i} className="my-4 relative group">
-                              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-violet-500/10 rounded-xl blur-xl transition-opacity opacity-0 group-hover:opacity-100" />
-                              <div className="relative rounded-xl bg-[#0a0c10] border border-white/10 overflow-hidden shadow-2xl">
-                                <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-white/[0.02]">
-                                  <div className="flex items-center gap-1.5">
-                                    <div className="w-2.5 h-2.5 rounded-full bg-red-500/30 border border-red-500/50" />
-                                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/30 border border-yellow-500/50" />
-                                    <div className="w-2.5 h-2.5 rounded-full bg-green-500/30 border border-green-500/50" />
-                                  </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-                                    onClick={() => navigator.clipboard.writeText(part.trim())}
-                                    title="Copy code"
-                                  >
-                                    <Copy className="w-3.5 h-3.5" />
-                                  </Button>
-                                </div>
-                                <pre className="p-4 text-gray-300 text-[13px] font-mono overflow-x-auto leading-relaxed">
-                                  <code>{part.trim()}</code>
-                                </pre>
-                              </div>
-                            </div>
-                          );
-                        }
-                        // Hilangkan semua asterisk
-                        const text = part.replace(/\*/g, '');
-                        return <span key={i}>{text}</span>;
-                      })}
-                    </div>
+                    {(() => {
+                      let displayContent = message.content;
+                      let displayActions = [...(message.actions || [])];
 
-                    {message.actions && message.actions.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
-                        {message.actions.map((action, i) => (
-                          <Button
-                            key={i}
-                            onClick={() => handleAction(action)}
-                            className={cn(
-                              'w-full',
-                              action.type === 'fix' && 'bg-green-600 hover:bg-green-500 text-white',
-                              action.type === 'command' && 'bg-blue-600 hover:bg-blue-500 text-white',
-                              action.type === 'suggestion' && 'bg-violet-600 hover:bg-violet-500 text-white',
-                              action.type === 'save_file' && 'bg-orange-600 hover:bg-orange-500 text-white'
-                            )}
-                          >
-                            {action.type === 'fix' && <CheckCircle className="w-4 h-4 mr-2" />}
-                            {action.type === 'command' && <Terminal className="w-4 h-4 mr-2" />}
-                            {action.type === 'suggestion' && <Lightbulb className="w-4 h-4 mr-2" />}
-                            {action.type === 'save_file' && <Save className="w-4 h-4 mr-2" />}
-                            {action.label}
-                          </Button>
-                        ))}
-                      </div>
-                    )}
+                      const actionRegex = /```json\s*(\[\s*\{\s*"type"[\s\S]*?\])\s*```/g;
+                      let match;
+                      while ((match = actionRegex.exec(displayContent)) !== null) {
+                        try {
+                          const parsed = JSON.parse(match[1]);
+                          if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].type) {
+                            displayActions = [...displayActions, ...parsed];
+                            displayContent = displayContent.substring(0, match.index) + displayContent.substring(match.index + match[0].length);
+                            actionRegex.lastIndex = 0;
+                          }
+                        } catch (e) { }
+                      }
+
+                      return (
+                        <>
+                          <div className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">
+                            {displayContent.trim().split('```').map((part, i) => {
+                              if (i % 2 === 1) {
+                                return (
+                                  <div key={i} className="my-4 relative group">
+                                    <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-violet-500/10 rounded-xl blur-xl transition-opacity opacity-0 group-hover:opacity-100" />
+                                    <div className="relative rounded-xl bg-[#0a0c10] border border-white/10 overflow-hidden shadow-2xl">
+                                      <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-white/[0.02]">
+                                        <div className="flex items-center gap-1.5">
+                                          <div className="w-2.5 h-2.5 rounded-full bg-red-500/30 border border-red-500/50" />
+                                          <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/30 border border-yellow-500/50" />
+                                          <div className="w-2.5 h-2.5 rounded-full bg-green-500/30 border border-green-500/50" />
+                                        </div>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6 hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                                          onClick={() => navigator.clipboard.writeText(part.trim())}
+                                          title="Copy code"
+                                        >
+                                          <Copy className="w-3.5 h-3.5" />
+                                        </Button>
+                                      </div>
+                                      <pre className="p-4 text-gray-300 text-[13px] font-mono overflow-x-auto leading-relaxed">
+                                        <code>{part.trim()}</code>
+                                      </pre>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              // Hilangkan semua asterisk
+                              const text = part.replace(/\*/g, '');
+                              return <span key={i}>{text}</span>;
+                            })}
+                          </div>
+
+                          {displayActions.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
+                              {displayActions.map((action, i) => (
+                                <Button
+                                  key={i}
+                                  onClick={() => handleAction(action)}
+                                  className={cn(
+                                    'w-full',
+                                    action.type === 'fix' && 'bg-green-600 hover:bg-green-500 text-white',
+                                    action.type === 'command' && 'bg-blue-600 hover:bg-blue-500 text-white',
+                                    action.type === 'suggestion' && 'bg-violet-600 hover:bg-violet-500 text-white',
+                                    action.type === 'save_file' && 'bg-orange-600 hover:bg-orange-500 text-white',
+                                    !['fix', 'command', 'suggestion', 'save_file'].includes(action.type) && 'bg-white/10 hover:bg-white/20 text-white'
+                                  )}
+                                >
+                                  {action.type === 'fix' && <CheckCircle className="w-4 h-4 mr-2" />}
+                                  {action.type === 'command' && <Terminal className="w-4 h-4 mr-2" />}
+                                  {action.type === 'suggestion' && <Lightbulb className="w-4 h-4 mr-2" />}
+                                  {action.type === 'save_file' && <Save className="w-4 h-4 mr-2" />}
+                                  {!['fix', 'command', 'suggestion', 'save_file'].includes(action.type) && <Bot className="w-4 h-4 mr-2" />}
+                                  {action.label}
+                                </Button>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
 
                     <div className="flex items-center justify-between mt-3 pt-2 border-t border-white/5">
                       <span className="text-xs text-gray-500" suppressHydrationWarning>
@@ -705,6 +777,28 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
               ))}
             </AnimatePresence>
 
+            {/* Running Task Indicator */}
+            {runningAction && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex items-center gap-3"
+              >
+                <div className="w-8 h-8 rounded-lg bg-[#0a0c10] p-[1px] relative overflow-hidden group flex-shrink-0">
+                  <div className="absolute inset-0 bg-gradient-to-r from-violet-600/50 to-blue-600/50 animate-[spin_2s_linear_infinite]" />
+                  <div className="w-full h-full rounded-lg bg-[#0a0c10] flex items-center justify-center relative z-10">
+                    <Sparkles className="w-4 h-4 text-violet-400 animate-pulse" />
+                  </div>
+                </div>
+                <div className="bg-gradient-to-r from-violet-500/10 to-blue-500/10 border border-violet-500/20 rounded-xl px-4 py-2.5 flex items-center gap-3 shadow-lg shadow-violet-500/5 backdrop-blur-sm">
+                  <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+                  <span className="text-sm font-medium text-transparent bg-clip-text bg-gradient-to-r from-violet-300 to-blue-300 animate-pulse">
+                    Mengeksekusi: {runningAction}
+                  </span>
+                </div>
+              </motion.div>
+            )}
+
             {/* Typing Indicator */}
             {isTyping && (
               <motion.div
@@ -712,7 +806,7 @@ export function AIAssistant({ initialQuery }: { initialQuery?: string }) {
                 animate={{ opacity: 1 }}
                 className="flex items-center gap-3"
               >
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center flex-shrink-0">
                   <Bot className="w-4 h-4 text-white" />
                 </div>
                 <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">

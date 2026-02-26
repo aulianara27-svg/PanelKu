@@ -5,16 +5,11 @@ const prisma = new PrismaClient();
 
 export async function GET() {
     try {
-        // Cek apakah tabel user sudah ada isinya
-        const userCount = await prisma.cc_User.count();
-
-        if (userCount > 0) {
-            return NextResponse.json({ message: "Database is already initialized. Skipping setup." }, { status: 200 });
-        }
-
         // Buat Super Admin
-        await prisma.cc_User.create({
-            data: {
+        await prisma.cc_User.upsert({
+            where: { username: 'admin' },
+            update: {},
+            create: {
                 email: 'admin@coles.id',
                 username: 'admin',
                 password: 'password123', // Dummy password untuk testing
@@ -24,9 +19,11 @@ export async function GET() {
             }
         });
 
-        // Buat Student (User biasa)
-        await prisma.cc_User.create({
-            data: {
+        // Buat Student
+        await prisma.cc_User.upsert({
+            where: { username: 'budi123' },
+            update: {},
+            create: {
                 email: 'budi@student.coles.id',
                 username: 'budi123',
                 password: 'password123', // Dummy password
@@ -36,7 +33,35 @@ export async function GET() {
             }
         });
 
-        return NextResponse.json({ message: "Database successfully initialized with admin and budi123." }, { status: 201 });
+        // Buat User biasa
+        await prisma.cc_User.upsert({
+            where: { username: 'joko123' },
+            update: {},
+            create: {
+                email: 'joko@user.coles.id',
+                username: 'joko123',
+                password: 'password123', // Dummy password
+                name: 'Joko Anwar',
+                role: 'user',
+                status: 'active'
+            }
+        });
+
+        // Buat Admin
+        await prisma.cc_User.upsert({
+            where: { username: 'manager123' },
+            update: {},
+            create: {
+                email: 'manager@coles.id',
+                username: 'manager123',
+                password: 'password123', // Dummy password
+                name: 'Manager System',
+                role: 'admin',
+                status: 'active'
+            }
+        });
+
+        return NextResponse.json({ message: "Database successfully initialized with admin, manager123, joko123, and budi123." }, { status: 201 });
 
     } catch (error) {
         console.error("Setup Error:", error);

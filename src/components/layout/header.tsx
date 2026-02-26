@@ -84,47 +84,49 @@ export function Header({ activeSection, systemStatus, onOpenAI }: HeaderProps) {
             </p>
           </div>
 
-          {/* System Status Pills */}
-          <div className="hidden md:flex items-center gap-3">
-            <motion.div
-              whileHover={{ scale: 1.02 }}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10"
-            >
-              <div className={cn(
-                'w-2 h-2 rounded-full',
-                systemStatus.cpu > 80 ? 'bg-red-500 animate-pulse' :
-                  systemStatus.cpu > 60 ? 'bg-yellow-500' : 'bg-green-500'
-              )} />
-              <span className="text-xs text-gray-400">CPU</span>
-              <span className="text-xs font-mono text-white">{systemStatus.cpu}%</span>
-            </motion.div>
+          {/* System Status Pills - Only for admin/superadmin */}
+          {(mockRole === 'superadmin' || mockRole === 'admin') && (
+            <div className="hidden md:flex items-center gap-3">
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10"
+              >
+                <div className={cn(
+                  'w-2 h-2 rounded-full',
+                  systemStatus.cpu > 80 ? 'bg-red-500 animate-pulse' :
+                    systemStatus.cpu > 60 ? 'bg-yellow-500' : 'bg-green-500'
+                )} />
+                <span className="text-xs text-gray-400">CPU</span>
+                <span className="text-xs font-mono text-white">{systemStatus.cpu}%</span>
+              </motion.div>
 
-            <motion.div
-              whileHover={{ scale: 1.02 }}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10"
-            >
-              <div className={cn(
-                'w-2 h-2 rounded-full',
-                systemStatus.memory > 80 ? 'bg-red-500 animate-pulse' :
-                  systemStatus.memory > 60 ? 'bg-yellow-500' : 'bg-green-500'
-              )} />
-              <span className="text-xs text-gray-400">RAM</span>
-              <span className="text-xs font-mono text-white">{systemStatus.memory}%</span>
-            </motion.div>
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10"
+              >
+                <div className={cn(
+                  'w-2 h-2 rounded-full',
+                  systemStatus.memory > 80 ? 'bg-red-500 animate-pulse' :
+                    systemStatus.memory > 60 ? 'bg-yellow-500' : 'bg-green-500'
+                )} />
+                <span className="text-xs text-gray-400">RAM</span>
+                <span className="text-xs font-mono text-white">{systemStatus.memory}%</span>
+              </motion.div>
 
-            <motion.div
-              whileHover={{ scale: 1.02 }}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10"
-            >
-              <div className={cn(
-                'w-2 h-2 rounded-full',
-                systemStatus.disk > 80 ? 'bg-red-500 animate-pulse' :
-                  systemStatus.disk > 60 ? 'bg-yellow-500' : 'bg-green-500'
-              )} />
-              <span className="text-xs text-gray-400">Disk</span>
-              <span className="text-xs font-mono text-white">{systemStatus.disk}%</span>
-            </motion.div>
-          </div>
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10"
+              >
+                <div className={cn(
+                  'w-2 h-2 rounded-full',
+                  systemStatus.disk > 80 ? 'bg-red-500 animate-pulse' :
+                    systemStatus.disk > 60 ? 'bg-yellow-500' : 'bg-green-500'
+                )} />
+                <span className="text-xs text-gray-400">Disk</span>
+                <span className="text-xs font-mono text-white">{systemStatus.disk}%</span>
+              </motion.div>
+            </div>
+          )}
         </div>
 
         {/* Right Section - Actions */}

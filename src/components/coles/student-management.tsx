@@ -99,7 +99,10 @@ export function StudentManagement() {
     email: '',
     password: '',
     phpVersion: '8.2',
-    targetRole: 'student'
+    targetRole: 'student',
+    maxWebsites: 3,
+    maxDatabases: 3,
+    maxDiskSpace: 500, // In MB
   });
 
   const fetchStudents = useCallback(async () => {
@@ -168,8 +171,7 @@ export function StudentManagement() {
         description: 'User created successfully.',
       });
 
-      setShowCreateDialog(false);
-      setFormData({ username: '', name: '', email: '', password: '', phpVersion: '8.2', targetRole: 'student' });
+      setFormData({ username: '', name: '', email: '', password: '', phpVersion: '8.2', targetRole: 'student', maxWebsites: 3, maxDatabases: 3, maxDiskSpace: 500 });
       fetchStudents(); // Refresh data
     } catch (error: any) {
       toast({
@@ -332,25 +334,29 @@ export function StudentManagement() {
 
                 {/* Resource Usage */}
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400 flex items-center gap-2">
-                      <Globe className="w-4 h-4" />
-                      Websites
-                    </span>
-                    <span className="text-white">
-                      {student.usage?.websites || 0} / {student.limits?.maxWebsites || 0}
-                    </span>
-                  </div>
+                  {student.role === 'student' && (
+                    <>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400 flex items-center gap-2">
+                          <Globe className="w-4 h-4" />
+                          Websites
+                        </span>
+                        <span className="text-white">
+                          {student.usage?.websites || 0} / {student.limits?.maxWebsites || 0}
+                        </span>
+                      </div>
 
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400 flex items-center gap-2">
-                      <Database className="w-4 h-4" />
-                      Databases
-                    </span>
-                    <span className="text-white">
-                      {student.usage?.databases || 0} / {student.limits?.maxDatabases || 0}
-                    </span>
-                  </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400 flex items-center gap-2">
+                          <Database className="w-4 h-4" />
+                          Databases
+                        </span>
+                        <span className="text-white">
+                          {student.usage?.databases || 0} / {student.limits?.maxDatabases || 0}
+                        </span>
+                      </div>
+                    </>
+                  )}
 
                   <div>
                     <div className="flex items-center justify-between text-sm mb-1">
@@ -480,21 +486,69 @@ export function StudentManagement() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-[#0a0c10] border-blue-500/20">
-                      <SelectItem value="student">Student / User</SelectItem>
+                      <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="student">Student</SelectItem>
                       <SelectItem value="admin">Administrator</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               )}
             </div>
-            <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-              <p className="text-xs text-blue-400">
-                The student's website will be accessible at:
-              </p>
-              <code className="text-sm text-white font-mono">
-                coles.id/student/[username]
-              </code>
-            </div>
+            {(formData.targetRole === 'student' || formData.targetRole === 'user') && (
+              <>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-px bg-white/10 flex-1" />
+                  <span className="text-xs text-gray-500 uppercase tracking-widest font-semibold">Resource Limits</span>
+                  <div className="h-px bg-white/10 flex-1" />
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  {formData.targetRole === 'student' && (
+                    <>
+                      <div className="space-y-2">
+                        <Label className="text-gray-300">Max Websites</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={formData.maxWebsites}
+                          onChange={(e) => setFormData(p => ({ ...p, maxWebsites: parseInt(e.target.value) || 1 }))}
+                          className="bg-white/5 border-white/10 text-white"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-gray-300">Max DBs</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={formData.maxDatabases}
+                          onChange={(e) => setFormData(p => ({ ...p, maxDatabases: parseInt(e.target.value) || 0 }))}
+                          className="bg-white/5 border-white/10 text-white"
+                        />
+                      </div>
+                    </>
+                  )}
+                  <div className="space-y-2">
+                    <Label className="text-gray-300">Disk (MB)</Label>
+                    <Input
+                      type="number"
+                      min="100"
+                      value={formData.maxDiskSpace}
+                      onChange={(e) => setFormData(p => ({ ...p, maxDiskSpace: parseInt(e.target.value) || 100 }))}
+                      className="bg-white/5 border-white/10 text-white"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+            {formData.targetRole === 'student' && (
+              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                <p className="text-xs text-blue-400">
+                  The student's website will be accessible at:
+                </p>
+                <code className="text-sm text-white font-mono">
+                  coles.id/student/[username]
+                </code>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" className="border-white/10 text-gray-300" onClick={() => setShowCreateDialog(false)} disabled={isCreating}>
@@ -559,14 +613,18 @@ export function StudentManagement() {
                   <div className="p-4 rounded-lg bg-white/5 border border-white/10">
                     <p className="text-xs text-gray-500 mb-2">Resource Usage</p>
                     <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">Websites</span>
-                        <span className="text-white">{selectedStudent.usage?.websites || 0}/{selectedStudent.limits?.maxWebsites || 0}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">Databases</span>
-                        <span className="text-white">{selectedStudent.usage?.databases || 0}/{selectedStudent.limits?.maxDatabases || 0}</span>
-                      </div>
+                      {selectedStudent.role === 'student' && (
+                        <>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-400">Websites</span>
+                            <span className="text-white">{selectedStudent.usage?.websites || 0}/{selectedStudent.limits?.maxWebsites || 0}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-400">Databases</span>
+                            <span className="text-white">{selectedStudent.usage?.databases || 0}/{selectedStudent.limits?.maxDatabases || 0}</span>
+                          </div>
+                        </>
+                      )}
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-400">Disk</span>
                         <span className="text-white">

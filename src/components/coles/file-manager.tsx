@@ -29,8 +29,9 @@ import {
   Eye,
   Loader2,
 } from 'lucide-react';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuthStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -103,8 +104,9 @@ const getFileIconColor = (file: FileItem) => {
 
 export function FileManager() {
   const { toast } = useToast();
-  // Simulate linux path, starting at /var/www
-  const [currentPath, setCurrentPath] = useState('/var/www');
+  const { mockRole, user } = useAuthStore();
+  const baseDir = (mockRole === 'superadmin' || mockRole === 'admin') ? '/var/www' : user ? `/var/www/student_${user.username}` : '/var/www';
+  const [currentPath, setCurrentPath] = useState(baseDir);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [searchQuery, setSearchQuery] = useState('');
@@ -118,7 +120,9 @@ export function FileManager() {
   const fetchFiles = useCallback(async (dirPath: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/files?dir=${encodeURIComponent(dirPath)}`);
+      const { user, mockRole } = useAuthStore.getState();
+      const userIdStr = user && (mockRole !== 'superadmin' && mockRole !== 'admin') ? `&userId=${user.id}` : '';
+      const res = await fetch(`/api/files?dir=${encodeURIComponent(dirPath)}&requesterRole=${mockRole}${userIdStr}`);
       if (!res.ok) throw new Error('Failed to fetch files');
       const data = await res.json();
 
@@ -156,6 +160,87 @@ export function FileManager() {
     } else {
       setSelectedFiles([path]);
     }
+  };
+
+  const handleAction = async (action: string, targetPath: string, extraData?: any) => {
+    try {
+      const res = await fetch('/api/files/action', {
+        method: 'POST',
+        body: JSON.stringify({ action, targetPath, ...extraData })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Terjadi kesalahan');
+      return data;
+    } catch (err: any) {
+      toast({ title: 'Gagal', description: err.message, variant: 'destructive' });
+      throw err;
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    const name = prompt('Nama folder baru:');
+    if (!name) return;
+    await handleAction('mkdir', `${currentPath}/${name}`);
+    fetchFiles(currentPath);
+  };
+
+  const handleDelete = async (filePath: string) => {
+    if (!confirm(`Yakin ingin menghapus ${filePath}?`)) return;
+    await handleAction('delete', filePath);
+    fetchFiles(currentPath);
+  };
+
+  const handleEdit = async (filePath: string) => {
+    const isFile = files.find(f => f.path === filePath)?.type === 'file';
+    if (!isFile) return;
+    const data = await handleAction('read', filePath);
+    const newContent = prompt(`Edit isi file ${filePath}:`, data.content);
+    if (newContent !== null) {
+      await handleAction('write', filePath, { content: newContent });
+      toast({ title: 'Sukses', description: 'File berhasil diupdate' });
+    }
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('targetPath', `${currentPath}/${file.name}`);
+
+      const res = await fetch('/api/files/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Gagal upload file');
+      }
+
+      toast({ title: 'Sukses', description: `File ${file.name} berhasil di-upload!` });
+      fetchFiles(currentPath);
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      e.target.value = ''; // Reset input
+    }
+  };
+
+  const handleExtract = async (filePath: string) => {
+    if (!filePath.endsWith('.zip')) {
+      toast({ title: 'Error', description: 'Hanya mendukung ekstensi .zip', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Info', description: 'Sedang mengekstrak ZIP...' });
+    await handleAction('extract', filePath);
+    toast({ title: 'Sukses', description: 'ZIP berhasil diekstrak!' });
+    fetchFiles(currentPath);
   };
 
   const FileItemComponent = ({ file }: { file: FileItem }) => {
@@ -215,10 +300,6 @@ export function FileManager() {
             </ContextMenuItem>
           )}
           <ContextMenuItem className="text-gray-300 hover:text-white hover:bg-white/5">
-            <Edit className="w-4 h-4 mr-2" />
-            Edit
-          </ContextMenuItem>
-          <ContextMenuItem className="text-gray-300 hover:text-white hover:bg-white/5">
             <Eye className="w-4 h-4 mr-2" />
             View
           </ContextMenuItem>
@@ -244,16 +325,24 @@ export function FileManager() {
             </ContextMenuItem>
           )}
           <ContextMenuSeparator className="bg-white/10" />
+          {file.type === 'file' && (
+            <ContextMenuItem className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10" onClick={() => handleEdit(file.path)}>
+              <Edit className="w-4 h-4 mr-2" />
+              Edit
+            </ContextMenuItem>
+          )}
+          {file.type === 'file' && file.name.endsWith('.zip') && (
+            <ContextMenuItem className="text-green-400 hover:text-green-300 hover:bg-green-500/10" onClick={() => handleExtract(file.path)}>
+              <FileArchive className="w-4 h-4 mr-2" />
+              Extract ZIP
+            </ContextMenuItem>
+          )}
           <ContextMenuItem className="text-gray-300 hover:text-white hover:bg-white/5">
             <Download className="w-4 h-4 mr-2" />
             Download
           </ContextMenuItem>
-          <ContextMenuItem className="text-gray-300 hover:text-white hover:bg-white/5">
-            <Lock className="w-4 h-4 mr-2" />
-            Permissions
-          </ContextMenuItem>
           <ContextMenuSeparator className="bg-white/10" />
-          <ContextMenuItem className="text-red-400 hover:text-red-300 hover:bg-red-500/10">
+          <ContextMenuItem className="text-red-400 hover:text-red-300 hover:bg-red-500/10" onClick={() => handleDelete(file.path)}>
             <Trash2 className="w-4 h-4 mr-2" />
             Delete
           </ContextMenuItem>
@@ -275,7 +364,7 @@ export function FileManager() {
             variant="ghost"
             size="icon"
             className="h-9 w-9 hover:bg-white/10"
-            onClick={() => setCurrentPath('/var/www')}
+            onClick={() => setCurrentPath(baseDir)}
           >
             <Home className="w-4 h-4 text-gray-400" />
           </Button>
@@ -286,8 +375,8 @@ export function FileManager() {
             onClick={() => {
               const newPath = pathParts.slice(0, -1).join('/');
               // prevent going above /var/www if we want to restrict them
-              if (!newPath || newPath === 'var' || newPath === '') {
-                setCurrentPath('/var/www');
+              if (!newPath || newPath === 'var' || newPath === '' || (mockRole !== 'superadmin' && mockRole !== 'admin' && !(`/${newPath}`.startsWith(baseDir)))) {
+                setCurrentPath(baseDir);
               } else {
                 setCurrentPath('/' + newPath);
               }
@@ -349,6 +438,17 @@ export function FileManager() {
           </Button>
         </div>
 
+        <input type="file" ref={fileInputRef} className="hidden" onChange={handleUpload} />
+        <input
+          type="file"
+          ref={folderInputRef}
+          className="hidden"
+          // @ts-ignore - directory attributes are non-standard
+          webkitdirectory="true"
+          directory="true"
+          onChange={handleUpload}
+        />
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button className="bg-blue-600 hover:bg-blue-500 text-white">
@@ -357,23 +457,18 @@ export function FileManager() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-48 bg-[#0a0c10] border-blue-500/20">
-            <DropdownMenuItem className="text-gray-300 hover:text-white hover:bg-white/5">
+            <DropdownMenuItem className="text-gray-300 hover:text-white hover:bg-white/5" onClick={() => fileInputRef.current?.click()}>
               <File className="w-4 h-4 mr-2" />
-              Upload Files
+              Upload File
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-gray-300 hover:text-white hover:bg-white/5">
+            <DropdownMenuItem className="text-gray-300 hover:text-white hover:bg-white/5" onClick={() => folderInputRef.current?.click()}>
               <Folder className="w-4 h-4 mr-2" />
               Upload Folder
-            </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-white/10" />
-            <DropdownMenuItem className="text-gray-300 hover:text-white hover:bg-white/5">
-              <FileArchive className="w-4 h-4 mr-2" />
-              Extract Archive
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button variant="outline" className="border-white/10 text-gray-300">
+        <Button variant="outline" className="border-white/10 text-gray-300" onClick={handleCreateFolder}>
           <FolderPlus className="w-4 h-4 mr-2" />
           New Folder
         </Button>

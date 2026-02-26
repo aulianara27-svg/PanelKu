@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
 
@@ -10,9 +11,33 @@ export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
         const dirParam = searchParams.get('dir') || '/';
+        const requesterRole = searchParams.get('requesterRole') || 'student';
+        const userId = searchParams.get('userId');
 
         // Normalisasi path agar aman dan tidak bisa keluar dari BASE_DIR
-        const subPath = dirParam.replace(/^\/var\/www\/?/, '');
+        let subPath = dirParam.replace(/^\/var\/www\/?/, '');
+
+        if (requesterRole !== 'superadmin' && requesterRole !== 'admin') {
+            // Fetch user to get username for their home folder
+            if (!userId) {
+                return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+            }
+            const prisma = new PrismaClient();
+            const user = await prisma.cc_User.findUnique({ where: { id: userId } });
+            if (!user) {
+                return NextResponse.json({ error: "User not found" }, { status: 404 });
+            }
+
+            // Enforce that user cannot go above their own directory
+            // User's directory is /var/www/student_username
+            const userDirPrefix = `student_${user.username}`;
+
+            if (!subPath.startsWith(userDirPrefix)) {
+                // If they try to access something else, lock them to their dir
+                subPath = userDirPrefix;
+            }
+        }
+
         const targetPath = path.join(BASE_DIR, subPath);
 
         // Fallback keamanan jika path mencoba lari ke direktori atas (Directory Traversal)

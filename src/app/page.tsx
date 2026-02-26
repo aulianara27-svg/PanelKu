@@ -17,6 +17,8 @@ import { SSLManager } from '@/components/coles/ssl';
 import { Deployments } from '@/components/coles/deployments';
 import { CloudflareTunnels } from '@/components/coles/cloudflare-tunnels';
 import { LoginForm } from '@/components/coles/login-form';
+import { SeoTools } from '@/components/coles/seo-tools';
+import { AppInstaller } from '@/components/coles/app-installer';
 import { Globe, Shield, Zap } from 'lucide-react';
 
 export default function ColesControlPanel() {
@@ -57,6 +59,10 @@ export default function ColesControlPanel() {
         return <Deployments />;
       case 'tunnels':
         return <CloudflareTunnels />;
+      case 'seo':
+        return <SeoTools />;
+      case 'apps':
+        return <AppInstaller />;
       case 'database':
         return <DatabaseManager />;
       case 'files':

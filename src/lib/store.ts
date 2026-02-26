@@ -22,8 +22,8 @@ interface AuthState {
   login: (user: User) => void;
   logout: () => void;
   setLoading: (loading: boolean) => void;
-  mockRole: 'superadmin' | 'admin' | 'student';
-  setMockRole: (role: 'superadmin' | 'admin' | 'student') => void;
+  mockRole: 'superadmin' | 'admin' | 'student' | 'user';
+  setMockRole: (role: 'superadmin' | 'admin' | 'student' | 'user') => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({

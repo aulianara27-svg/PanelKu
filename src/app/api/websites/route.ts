@@ -5,9 +5,22 @@ import path from 'path';
 
 const prisma = new PrismaClient();
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
+    const requesterRole = searchParams.get('requesterRole') || 'student';
+
+    const whereClause: any = {};
+    if (requesterRole !== 'superadmin' && requesterRole !== 'admin') {
+      if (!userId) {
+        return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+      }
+      whereClause.userId = userId;
+    }
+
     const websites = await prisma.cc_Website.findMany({
+      where: whereClause,
       orderBy: {
         createdAt: 'desc'
       },
@@ -47,69 +60,80 @@ export async function POST(request: Request) {
       );
     }
 
-    // Connect to an admin user since real auth is not yet hooked up
-    let user = await prisma.cc_User.findFirst();
+    let user: any = null;
+    if (body.userId) {
+      user = await prisma.cc_User.findUnique({ where: { id: body.userId } });
+    }
+
     if (!user) {
-      // Auto-create a dummy admin user if none exists yet
-      user = await prisma.cc_User.create({
-        data: {
-          email: 'admin@coles.id',
-          username: 'admin',
-          password: 'hashed_password', // Just a placeholder for testing
-          name: 'Administrator',
-          role: 'superadmin',
-          status: 'active',
-        }
+      user = await prisma.cc_User.findFirst({ where: { role: 'superadmin' } });
+    }
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'No user found' },
+        { status: 400 }
+      );
+    }
+
+    // Role-based limits: Student role has a limit of 3 websites
+    const requesterRole = body.requesterRole || user.role;
+    if (requesterRole === 'student') {
+      const userWebsiteCount = await prisma.cc_Website.count({
+        where: { userId: user.id }
       });
+      if (userWebsiteCount >= 3) {
+        return NextResponse.json(
+          { error: 'Batas maksimal 3 website untuk pengguna student telah tercapai.' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Determine the actual path on disk and virtual path
+    let virtualPath = path;
+    let actualPathOnDisk = path;
+    const isStudent = requesterRole === 'student';
+
+    if (isStudent && user?.username) {
+      // Enforce student's path to be rooted inside their workspace
+      // So if they enter 'myweb', it becomes 'student_budi/myweb'
+      const prefix = `student_${user.username}`;
+      if (!path.startsWith(`${prefix}/`)) {
+        actualPathOnDisk = `${prefix}/${path.replace(/^[/]+/, '')}`;
+        virtualPath = actualPathOnDisk;
+      }
     }
 
     const newWebsite = await prisma.cc_Website.create({
       data: {
         userId: user.id,
         name,
-        path,
+        path: virtualPath,
         domain: domain || null,
-        documentRoot: `/var/www/${path}`,
+        documentRoot: `/var/www/${virtualPath}`,
         phpVersion: environment || 'static',
         status: 'active',
       }
     });
 
-    // Node daemon call to actually run configure Nginx, reload, etc.
-    // fetch('http://localhost:4000/api/daemon/create-website', ...)
-
-    // TEMPORARY: Create local folder on Windows XAMPP to simulate linux panel.
+    // Call the remote Linux daemon to create the folder and nginx configuration
     try {
-      const BASE_DIR = 'C:\\xampp\\htdocs';
-      const targetDir = path.join(BASE_DIR, path);
-
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
-
-        // Buat file index.html default
-        const defaultHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Welcome to ${name}</title>
-    <style>
-        body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f1115; color: white; }
-        .container { text-align: center; padding: 2rem; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); }
-        h1 { color: #60a5fa; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Welcome to ${name}!</h1>
-        <p>Your Coles Control workspace <strong>/var/www/${path}</strong> is ready.</p>
-        <p>Environment: <strong>${environment === 'static' ? 'Static HTML' : environment}</strong></p>
-    </div>
-</body>
-</html>`;
-        fs.writeFileSync(path.join(targetDir, 'index.html'), defaultHtml);
-      }
-    } catch (fsError) {
-      console.error("Warning: Failed to create local xampp directory:", fsError);
+      await fetch('http://100.65.134.119:4000/api/website/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'COLES_SECRET_123'
+        },
+        body: JSON.stringify({
+          username: user.username,
+          pathName: actualPathOnDisk,
+          domain: domain || null,
+          targetRole: requesterRole
+        })
+      });
+    } catch (daemonError) {
+      console.error("Warning: Failed to call remote linux daemon:", daemonError);
     }
 
     return NextResponse.json(newWebsite, { status: 201 });

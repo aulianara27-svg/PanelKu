@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import fs from 'fs';
+import path from 'path';
 
 const prisma = new PrismaClient();
 
@@ -9,8 +11,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const requesterRole = searchParams.get('requesterRole') || 'student';
 
-    // Jika admin, hanya bisa lihat student. Jika superadmin, bisa lihat admin dan student.
-    const eligibleRoles = requesterRole === 'superadmin' ? ['admin', 'student'] : ['student'];
+    // Jika admin, bisa lihat student dan user. Jika superadmin, bisa lihat semuanya.
+    const eligibleRoles = requesterRole === 'superadmin' ? ['admin', 'student', 'user'] : ['student', 'user'];
 
     const students = await prisma.cc_User.findMany({
       where: {
@@ -56,7 +58,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { username, name, email, password, phpVersion, targetRole, requesterRole } = body;
+    const { username, name, email, password, phpVersion, targetRole, requesterRole, maxWebsites, maxDatabases, maxDiskSpace } = body;
 
     // Validate request
     if (!username || !email || !password) {
@@ -70,6 +72,8 @@ export async function POST(request: Request) {
     let finalRole = 'student';
     if (targetRole === 'admin' && requesterRole === 'superadmin') {
       finalRole = 'admin';
+    } else if (targetRole === 'user' || targetRole === 'student') {
+      finalRole = targetRole;
     }
 
     // Check if user already exists
@@ -102,20 +106,33 @@ export async function POST(request: Request) {
         }
       });
 
-      // Create dummy limits for new student
+      // Create actual limits for new student from the form
       await tx.cc_StudentLimit.create({
         data: {
           userId: user.id,
-          maxWebsites: 1,
-          maxDatabases: 1,
-          maxDiskSpace: 1073741824, // 1GB
-          maxBandwidth: 10737418240, // 10GB
+          maxWebsites: maxWebsites ? parseInt(maxWebsites.toString()) : 1,
+          maxDatabases: maxDatabases ? parseInt(maxDatabases.toString()) : 1,
+          maxDiskSpace: maxDiskSpace ? parseInt(maxDiskSpace.toString()) * 1024 * 1024 : 1073741824, // MB to bytes
+          maxBandwidth: 10737418240, // 10GB default
         }
       });
 
-      // Here you would also want to call your Node Daemon
-      // to create the actual server folders, unix user, etc.
-      // fetch('http://localhost:4000/api/daemon/create-student', ...)
+      if (finalRole === 'student') {
+        try {
+          await fetch('http://100.65.134.119:4000/api/student/create', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'COLES_SECRET_123'
+            },
+            body: JSON.stringify({
+              username: username
+            })
+          });
+        } catch (daemonError) {
+          console.error("Warning: Failed to call remote linux daemon:", daemonError);
+        }
+      }
 
       return user;
     });

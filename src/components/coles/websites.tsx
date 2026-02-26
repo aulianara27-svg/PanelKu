@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useState, useCallback, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuthStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -97,7 +98,9 @@ export function Websites() {
   const fetchWebsites = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/websites');
+      const { user, mockRole } = useAuthStore.getState();
+      const userIdStr = user && (mockRole !== 'superadmin' && mockRole !== 'admin') ? `&userId=${user.id}` : '';
+      const res = await fetch(`/api/websites?requesterRole=${mockRole}${userIdStr}`);
       if (!res.ok) throw new Error('Failed to fetch websites');
       const data = await res.json();
 
@@ -135,10 +138,13 @@ export function Websites() {
 
     setIsCreating(true);
     try {
+      const { user, mockRole } = useAuthStore.getState();
+      const payload = { ...newSite, requesterRole: mockRole, userId: user?.id };
+
       const res = await fetch('/api/websites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSite),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();

@@ -136,8 +136,10 @@ export function LoginForm() {
                     <div className="mt-8 pt-6 border-t border-white/10 text-center">
                         <p className="text-xs text-gray-500">
                             Demo Test Accounts:<br />
-                            <b>admin / password123</b><br />
-                            <b>budi123 / password123</b>
+                            <b>admin / password123</b> (Superadmin)<br />
+                            <b>manager123 / password123</b> (Admin)<br />
+                            <b>budi123 / password123</b> (Student)<br />
+                            <b>joko123 / password123</b> (User)
                         </p>
                     </div>
                 </div>

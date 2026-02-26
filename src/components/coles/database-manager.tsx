@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useState, useCallback, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuthStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -89,7 +90,9 @@ export function DatabaseManager() {
   const fetchDatabases = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/databases');
+      const { user, mockRole } = useAuthStore.getState();
+      const userIdStr = user && (mockRole !== 'superadmin' && mockRole !== 'admin') ? `&userId=${user.id}` : '';
+      const res = await fetch(`/api/databases?requesterRole=${mockRole}${userIdStr}`);
       if (!res.ok) throw new Error('Failed to fetch databases');
       const data = await res.json();
 

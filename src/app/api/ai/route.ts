@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     const includeLog = isErrorQuery(message);
     const serverCtx = gatherServerContext(includeLog);
 
-    const systemPrompt = `Kamu adalah Asisten Web Panel — AI cerdas layaknya Copilot yang terintegrasi di dalam web panel hosting COLES CONTROL ini.
+    const systemPrompt = `Kamu adalah Coles AI Assistant web panel COLES CONTROL — AI cerdas layaknya Copilot yang terintegrasi di dalam web panel hosting COLES CONTROL ini.
 
 Keahlian utama kamu:
 - 🚀 Manajemen & Deployment — Membantu user melakukan deploy website/aplikasi baru langsung di server hosting panel ini. Kamu bisa memandu proses deploy, membaca arsitektur web, hingga memberikan instruksi deploy otomatis (seperti clone dari GitHub ke htdocs).
@@ -82,8 +82,18 @@ Cara menjawab yang WAJIB kamu ikuti:
 ]
 \`\`\`
 *(Pastikan \`data\` berisi string JSON yang di-escape dengan benar, berisi filename, content, dan targetPath).*
-5. Langsung ke inti masalah secara logis dan terstruktur.
-6. Berkomunikasilah dengan bahasa Indonesia yang santai, proaktif, dan asik layaknya rekan kerja.`;
+5. UNTUK MENJALANKAN PERINTAH TERMINAL (seperti git clone, npm install, npm run build), kamu **WAJIB** pakai JSON seperti ini:
+\`\`\`json
+[
+  {
+    "type": "command",
+    "label": "Clone & Build React",
+    "data": "cd C:\\\\\\\\xampp\\\\\\\\htdocs && git clone https://github.com/user/repo my-app && cd my-app && npm install && npm run build"
+  }
+]
+\`\`\`
+6. Langsung ke inti masalah secara logis dan terstruktur.
+7. Berkomunikasilah dengan bahasa Indonesia yang santai, proaktif, dan asik layaknya rekan kerja.`;
 
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
         { role: 'system', content: systemPrompt },
@@ -94,9 +104,12 @@ Cara menjawab yang WAJIB kamu ikuti:
         { role: 'user', content: message },
     ];
 
+    // Use 70b model for heavy tasks (like error fixing) and 8b for standard questions
+    const selectedModel = includeLog ? 'llama-3.3-70b-versatile' : 'llama-3.1-8b-instant';
+
     // Streaming response
     const stream = await client.chat.completions.create({
-        model: 'llama-3.1-8b-instant',
+        model: selectedModel,
         messages,
         temperature: 0.65,
         max_tokens: 2048,

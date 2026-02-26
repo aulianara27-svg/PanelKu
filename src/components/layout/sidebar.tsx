@@ -27,6 +27,8 @@ import {
   X,
   Palette,
   BookOpen,
+  Rocket,
+  Search,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -115,9 +117,21 @@ const navigation: NavItem[] = [
     icon: BookOpen,
   },
   {
+    id: 'seo',
+    label: 'SEO Tools',
+    icon: Search,
+    badge: 'New',
+  },
+  {
+    id: 'apps',
+    label: 'App Installer',
+    icon: Rocket,
+  },
+  {
     id: 'settings',
     label: 'Settings',
     icon: Settings,
+    roles: ['superadmin']
   },
 ];
 
@@ -135,6 +149,10 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = expandedGroups.includes(item.group || item.id);
     const Icon = item.icon;
+
+    if (item.roles && !item.roles.includes(mockRole)) {
+      return null;
+    }
 
     return (
       <div key={item.id}>
@@ -295,7 +313,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
           isCollapsed && 'justify-center'
         )}>
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white text-sm font-bold">
-            {mockRole === 'superadmin' ? 'SA' : mockRole === 'admin' ? 'A' : 'S'}
+            {mockRole === 'superadmin' ? 'SA' : mockRole === 'admin' ? 'A' : mockRole === 'user' ? 'U' : 'S'}
           </div>
           <AnimatePresence mode="wait">
             {!isCollapsed && (

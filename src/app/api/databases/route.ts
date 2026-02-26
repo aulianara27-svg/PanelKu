@@ -4,9 +4,22 @@ import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
+    const requesterRole = searchParams.get('requesterRole') || 'student';
+
+    const whereClause: any = {};
+    if (requesterRole !== 'superadmin' && requesterRole !== 'admin') {
+      if (!userId) {
+        return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+      }
+      whereClause.userId = userId;
+    }
+
     const databases = await prisma.cc_Database.findMany({
+      where: whereClause,
       orderBy: {
         createdAt: 'desc'
       },
@@ -49,8 +62,16 @@ export async function POST(request: Request) {
     // Encrypt password (for panel viewing context, though normally we'd pass it to daemon directly to hash for mysql users)
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Get default admin user to attach db, since userId is required
-    let user = await prisma.cc_User.findFirst();
+    // Get user to attach db
+    let user: any = null;
+    if (body.userId) {
+      user = await prisma.cc_User.findUnique({ where: { id: body.userId } });
+    }
+
+    if (!user) {
+      user = await prisma.cc_User.findFirst({ where: { role: 'superadmin' } });
+    }
+
     if (!user) {
       return NextResponse.json(
         { error: 'No users found in the system to attach the database.' },
